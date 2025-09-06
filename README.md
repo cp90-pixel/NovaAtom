@@ -41,6 +41,15 @@ asks the model to craft a focused search query, runs it against a local YaCy
 search engine, and feeds the top results — including a short snippet for context
 — to the model so that answers can include up-to-date information from the internet.
 
+To have CodeSmith modify a file directly, supply the path via `--edit`:
+
+```
+python ai_cli.py --edit README.md "replace Hello with Hi"
+```
+
+The agent receives the current file contents and your instructions, then writes
+the updated contents back to disk.
+
 ### Running YaCy locally
 
 By default `ai_cli.py` queries `http://localhost:8090`. Start your own YaCy

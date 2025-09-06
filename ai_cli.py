@@ -129,6 +129,28 @@ def _build_payload(prompt: str, mode: str) -> dict:
     }
 
 
+def _build_edit_payload(file_content: str, instructions: str) -> dict:
+    """Create payload instructing the model to modify file contents."""
+    search_query = _create_search_query(instructions)
+    search_info = _web_search(search_query)
+    system_content = (
+        f"You are {AGENT_NAME}, an AI coding assistant that edits files. "
+        "Return only the updated file contents without additional commentary."
+    )
+    user_content = (
+        f"Search query: {search_query}\nWeb search results:\n{search_info}\n\n"
+        f"Current file contents:\n{file_content}\n\n"
+        f"Edit instructions: {instructions}"
+    )
+    return {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content},
+        ],
+    }
+
+
 def query_ai(prompt: str, mode: str) -> str:
     """Send a prompt to the AI model and return the response text."""
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -150,6 +172,37 @@ def query_ai(prompt: str, mode: str) -> str:
     return data["choices"][0]["message"]["content"].strip()
 
 
+def edit_file(path: str, instructions: str) -> None:
+    """Use the AI agent to edit a local file in place."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            original = fh.read()
+    except OSError as exc:
+        raise RuntimeError(f"Failed to read {path}: {exc}")
+
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        data=json.dumps(_build_edit_payload(original, instructions)),
+        timeout=30,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"API request failed: {response.text}")
+    data = response.json()
+    new_content = data["choices"][0]["message"]["content"]
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(new_content)
+    except OSError as exc:
+        raise RuntimeError(f"Failed to write {path}: {exc}")
+
+
 def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(description="Interact with the CodeSmith agent")
     parser.add_argument(
@@ -162,15 +215,24 @@ def main(argv: List[str]) -> int:
         default="coding",
         help="Select 'coding' for general coding help or 'qa' to ask about the repository.",
     )
+    parser.add_argument(
+        "--edit",
+        metavar="FILE",
+        help="Edit FILE in place using the prompt as instructions.",
+    )
     ns = parser.parse_args(argv)
 
     prompt = " ".join(ns.prompt)
     try:
-        answer = query_ai(prompt, ns.mode)
+        if ns.edit:
+            edit_file(ns.edit, prompt)
+            print(f"{AGENT_NAME}: Updated {ns.edit}")
+        else:
+            answer = query_ai(prompt, ns.mode)
+            print(f"{AGENT_NAME}: {answer}")
     except RuntimeError as exc:
         print(exc)
         return 1
-    print(f"{AGENT_NAME}: {answer}")
     return 0
 
 
