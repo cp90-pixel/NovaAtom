@@ -35,4 +35,7 @@ python ai_cli.py --mode qa "What does ai_cli.py do?"
 ```
 
 The response from CodeSmith will be printed to the terminal. The script uses the
-`requests` library and the OpenAI Chat Completions API.
+`requests` library and the OpenAI Chat Completions API. For both modes the CLI
+also performs a DuckDuckGo web search for your prompt and feeds the top results
+to the model so that answers can include up-to-date information from the
+internet.

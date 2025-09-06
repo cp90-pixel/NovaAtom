@@ -27,17 +27,62 @@ def _gather_codebase() -> str:
     return "\n\n".join(parts)
 
 
+def _web_search(query: str, max_results: int = 5) -> str:
+    """Perform a DuckDuckGo web search and return top result snippets.
+
+    DuckDuckGo's HTML endpoint is scraped because it does not require an API
+    key. Only the title and URL of each result are returned to keep the context
+    compact. Network or parsing failures are ignored so that lack of search
+    results does not break the main workflow.
+    """
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        html = requests.get(
+            "https://duckduckgo.com/html/", params={"q": query}, headers=headers, timeout=10
+        ).text
+    except Exception as exc:  # pragma: no cover - network errors
+        return f"Web search failed: {exc}"
+
+    import html as html_module
+    import re
+    pattern = re.compile(
+        r'result__a[^>]*?href="(.*?)"[^>]*?>(.*?)</a>', re.IGNORECASE | re.DOTALL
+    )
+    results: List[str] = []
+    for url, title in pattern.findall(html):
+        # DuckDuckGo wraps result URLs, extract the real target if possible
+        if url.startswith("//duckduckgo.com/l/?"):  # redirect link
+            from urllib.parse import parse_qs, urlparse, unquote
+
+            qs = parse_qs(urlparse(url).query)
+            real_url = unquote(qs.get("uddg", [url])[0])
+        else:
+            real_url = url
+        clean_title = html_module.unescape(re.sub("<.*?>", "", title)).strip()
+        results.append(f"{clean_title} - {real_url}")
+        if len(results) >= max_results:
+            break
+
+    if not results:
+        return "No web results found."
+    return "\n".join(results)
+
+
 def _build_payload(prompt: str, mode: str) -> dict:
     """Create payload for OpenAI Chat Completions API."""
+    search_info = _web_search(prompt)
     if mode == "qa":
         context = _gather_codebase()
         system_content = (
             f"You are {AGENT_NAME}, an AI assistant answering questions about the NovaAtom codebase."
         )
-        user_content = f"Repository contents:\n{context}\n\nQuestion: {prompt}"
+        user_content = (
+            f"Repository contents:\n{context}\n\nWeb search results:\n{search_info}\n\nQuestion: {prompt}"
+        )
     else:
         system_content = f"You are {AGENT_NAME}, an AI coding assistant."
-        user_content = prompt
+        user_content = f"Web search results:\n{search_info}\n\nPrompt: {prompt}"
 
     return {
         "model": "gpt-4o-mini",
