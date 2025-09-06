@@ -10,6 +10,8 @@ import subprocess
 import threading
 import requests
 
+from ai_cli import AGENT_NAME, _build_edit_payload, query_ai
+
 class CodeEditor:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -40,6 +42,11 @@ class CodeEditor:
         terminal_menu = tk.Menu(menubar, tearoff=0)
         terminal_menu.add_command(label="Open Terminal", command=self.open_terminal, accelerator="Ctrl+T")
         menubar.add_cascade(label="Terminal", menu=terminal_menu)
+
+        codesmith_menu = tk.Menu(menubar, tearoff=0)
+        codesmith_menu.add_command(label="Ask CodeSmith", command=self.ask_codesmith)
+        codesmith_menu.add_command(label="Edit with CodeSmith", command=self.codesmith_edit)
+        menubar.add_cascade(label="CodeSmith", menu=codesmith_menu)
 
         self.root.config(menu=menubar)
         self.root.bind_all("<Control-n>", lambda event: self.new_file())
@@ -159,6 +166,49 @@ class CodeEditor:
         start = self.text.index(f"{index} wordstart")
         prefix = self.text.get(start, index)
         return prefix
+
+    def ask_codesmith(self):
+        prompt = simpledialog.askstring("Ask CodeSmith", "Enter your prompt:")
+        if not prompt:
+            return
+        try:
+            answer = query_ai(prompt, "coding")
+        except RuntimeError as exc:
+            messagebox.showerror(AGENT_NAME, str(exc))
+            return
+        messagebox.showinfo(AGENT_NAME, answer)
+
+    def codesmith_edit(self):
+        instructions = simpledialog.askstring(
+            "Edit with CodeSmith", "Describe changes to apply to the current file:"
+        )
+        if not instructions:
+            return
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            messagebox.showerror(AGENT_NAME, "OPENAI_API_KEY environment variable is not set")
+            return
+        content = self.text.get("1.0", tk.END)
+        payload = _build_edit_payload(content, instructions)
+        try:
+            resp = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                data=json.dumps(payload),
+                timeout=30,
+            )
+            if resp.status_code != 200:
+                messagebox.showerror(AGENT_NAME, resp.text)
+                return
+            data = resp.json()
+            new_content = data["choices"][0]["message"]["content"]
+            self.text.delete("1.0", tk.END)
+            self.text.insert("1.0", new_content)
+        except Exception as exc:
+            messagebox.showerror(AGENT_NAME, str(exc))
 
     def _fetch_code_suggestions(self, prefix: str):
         """Query the CodeSmith agent for code completion suggestions."""
