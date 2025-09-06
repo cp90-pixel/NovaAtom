@@ -15,4 +15,5 @@ This will launch the editor where you can open, edit, and save files.
 - Open, edit, and save plain text files.
 - Find text within the document (`Ctrl+F`).
 - Replace text throughout the document (`Ctrl+H`).
+- Run shell commands in an integrated terminal (`Ctrl+T`).
 

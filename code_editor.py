@@ -1,5 +1,8 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
+from tkinter.scrolledtext import ScrolledText
+import subprocess
+import threading
 
 class CodeEditor:
     def __init__(self, root: tk.Tk):
@@ -27,12 +30,17 @@ class CodeEditor:
         edit_menu.add_command(label="Replace", command=self.replace_text, accelerator="Ctrl+H")
         menubar.add_cascade(label="Edit", menu=edit_menu)
 
+        terminal_menu = tk.Menu(menubar, tearoff=0)
+        terminal_menu.add_command(label="Open Terminal", command=self.open_terminal, accelerator="Ctrl+T")
+        menubar.add_cascade(label="Terminal", menu=terminal_menu)
+
         self.root.config(menu=menubar)
         self.root.bind_all("<Control-n>", lambda event: self.new_file())
         self.root.bind_all("<Control-o>", lambda event: self.open_file())
         self.root.bind_all("<Control-s>", lambda event: self.save_file())
         self.root.bind_all("<Control-f>", lambda event: self.find_text())
         self.root.bind_all("<Control-h>", lambda event: self.replace_text())
+        self.root.bind_all("<Control-t>", lambda event: self.open_terminal())
 
     def new_file(self):
         if self._confirm_discard_changes():
@@ -108,6 +116,48 @@ class CodeEditor:
             return
         self.text.delete("1.0", tk.END)
         self.text.insert("1.0", new_content)
+
+    def open_terminal(self):
+        if hasattr(self, "terminal_window") and self.terminal_window.winfo_exists():
+            self.terminal_window.deiconify()
+            self.terminal_entry.focus()
+            return
+
+        self.terminal_window = tk.Toplevel(self.root)
+        self.terminal_window.title("Terminal")
+
+        self.terminal_output = ScrolledText(self.terminal_window, wrap="word")
+        self.terminal_output.pack(fill="both", expand=True)
+
+        entry_frame = tk.Frame(self.terminal_window)
+        entry_frame.pack(fill="x")
+
+        self.terminal_entry = tk.Entry(entry_frame)
+        self.terminal_entry.pack(side="left", fill="x", expand=True)
+        self.terminal_entry.bind("<Return>", lambda event: self.run_command())
+
+        run_button = tk.Button(entry_frame, text="Run", command=self.run_command)
+        run_button.pack(side="right")
+
+    def run_command(self):
+        command = self.terminal_entry.get()
+        if not command.strip():
+            return
+        self.terminal_output.insert(tk.END, f"$ {command}\n")
+        self.terminal_entry.delete(0, tk.END)
+
+        def worker():
+            try:
+                completed = subprocess.run(
+                    command, shell=True, capture_output=True, text=True
+                )
+                output = completed.stdout + completed.stderr
+            except Exception as e:
+                output = str(e) + "\n"
+            self.terminal_output.insert(tk.END, output)
+            self.terminal_output.see(tk.END)
+
+        threading.Thread(target=worker, daemon=True).start()
 
 
 def main():
