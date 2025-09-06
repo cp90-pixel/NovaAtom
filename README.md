@@ -27,5 +27,12 @@ Set your OpenAI API key in the `OPENAI_API_KEY` environment variable and run:
 python ai_cli.py "Explain recursion"
 ```
 
+By default the CLI runs in **coding** mode for general programming help. Use the
+`--mode qa` option to ask questions specifically about this repository:
+
+```
+python ai_cli.py --mode qa "What does ai_cli.py do?"
+```
+
 The response from CodeSmith will be printed to the terminal. The script uses the
 `requests` library and the OpenAI Chat Completions API.
