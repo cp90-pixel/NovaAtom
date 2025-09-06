@@ -27,42 +27,64 @@ def _gather_codebase() -> str:
     return "\n\n".join(parts)
 
 
-def _web_search(query: str, max_results: int = 5) -> str:
-    """Perform a DuckDuckGo web search and return top result snippets.
+def _create_search_query(prompt: str) -> str:
+    """Ask the AI to craft a concise web search query."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return prompt
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {
+                "role": "system",
+                "content": "Craft a concise, well-structured web search query for the following text.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": 32,
+    }
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            data=json.dumps(payload),
+            timeout=15,
+        )
+        if response.status_code != 200:
+            return prompt
+        data = response.json()
+        return data["choices"][0]["message"]["content"].strip()
+    except Exception:
+        return prompt
 
-    DuckDuckGo's HTML endpoint is scraped because it does not require an API
-    key. Only the title and URL of each result are returned to keep the context
-    compact. Network or parsing failures are ignored so that lack of search
-    results does not break the main workflow.
+
+def _web_search(query: str, max_results: int = 5) -> str:
+    """Perform a YaCy web search and return top result snippets.
+
+    The public YaCy peer is queried via its JSON API. Only the title and URL of
+    each result are returned to keep the context compact. Network failures are
+    ignored so that lack of search results does not break the main workflow.
     """
 
-    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        html = requests.get(
-            "https://duckduckgo.com/html/", params={"q": query}, headers=headers, timeout=10
-        ).text
+        resp = requests.get(
+            "https://yacy.searchlab.eu/yacysearch.json",
+            params={"query": query, "rows": max_results},
+            timeout=10,
+        )
+        data = resp.json()
     except Exception as exc:  # pragma: no cover - network errors
         return f"Web search failed: {exc}"
 
-    import html as html_module
-    import re
-    pattern = re.compile(
-        r'result__a[^>]*?href="(.*?)"[^>]*?>(.*?)</a>', re.IGNORECASE | re.DOTALL
-    )
+    items = data.get("channels", [{}])[0].get("items", [])
     results: List[str] = []
-    for url, title in pattern.findall(html):
-        # DuckDuckGo wraps result URLs, extract the real target if possible
-        if url.startswith("//duckduckgo.com/l/?"):  # redirect link
-            from urllib.parse import parse_qs, urlparse, unquote
-
-            qs = parse_qs(urlparse(url).query)
-            real_url = unquote(qs.get("uddg", [url])[0])
-        else:
-            real_url = url
-        clean_title = html_module.unescape(re.sub("<.*?>", "", title)).strip()
-        results.append(f"{clean_title} - {real_url}")
-        if len(results) >= max_results:
-            break
+    for item in items[:max_results]:
+        title = item.get("title", "No title").strip()
+        link = item.get("link") or ""
+        results.append(f"{title} - {link}")
 
     if not results:
         return "No web results found."
@@ -71,18 +93,21 @@ def _web_search(query: str, max_results: int = 5) -> str:
 
 def _build_payload(prompt: str, mode: str) -> dict:
     """Create payload for OpenAI Chat Completions API."""
-    search_info = _web_search(prompt)
+    search_query = _create_search_query(prompt)
+    search_info = _web_search(search_query)
     if mode == "qa":
         context = _gather_codebase()
         system_content = (
             f"You are {AGENT_NAME}, an AI assistant answering questions about the NovaAtom codebase."
         )
         user_content = (
-            f"Repository contents:\n{context}\n\nWeb search results:\n{search_info}\n\nQuestion: {prompt}"
+            f"Repository contents:\n{context}\n\nSearch query: {search_query}\nWeb search results:\n{search_info}\n\nQuestion: {prompt}"
         )
     else:
         system_content = f"You are {AGENT_NAME}, an AI coding assistant."
-        user_content = f"Web search results:\n{search_info}\n\nPrompt: {prompt}"
+        user_content = (
+            f"Search query: {search_query}\nWeb search results:\n{search_info}\n\nPrompt: {prompt}"
+        )
 
     return {
         "model": "gpt-4o-mini",
