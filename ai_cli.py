@@ -9,9 +9,18 @@ import argparse
 import json
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 import requests
+
+from semantic_router import Route, SemanticRouter
+from semantic_router.llms import OpenAILLM
+from semantic_router.schema import Message
+
+try:  # Optional dependency for listing models
+    from openai import OpenAI
+except Exception:  # pragma: no cover - handled when SDK missing
+    OpenAI = None  # type: ignore
 
 
 AGENT_NAME = "CodeSmith"
@@ -70,37 +79,26 @@ def _gather_codebase() -> str:
     return "\n\n".join(parts)
 
 
-def _create_search_query(prompt: str) -> str:
-    """Ask the AI to craft a concise web search query."""
+def _create_search_query(prompt: str, model: str) -> str:
+    """Ask the selected model to craft a concise web search query."""
     try:
         api_key = load_api_key()
+        router = get_router(api_key)
     except RuntimeError:
         return prompt
-    payload = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {
-                "role": "system",
-                "content": "Craft a concise, well-structured web search query for the following text.",
-            },
-            {"role": "user", "content": prompt},
-        ],
-        "max_tokens": 32,
-    }
+    messages = [
+        Message(
+            role="system",
+            content="Craft a concise, well-structured web search query for the following text.",
+        ),
+        Message(role="user", content=prompt),
+    ]
     try:
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            data=json.dumps(payload),
-            timeout=15,
-        )
-        if response.status_code != 200:
+        route = router.check_for_matching_routes(model)
+        llm = route.llm if route and route.llm else router.llm
+        if llm is None:
             return prompt
-        data = response.json()
-        return data["choices"][0]["message"]["content"].strip()
+        return llm(messages).strip()
     except Exception:
         return prompt
 
@@ -145,9 +143,53 @@ def _web_search(query: str, max_results: int = 5) -> str:
     return "\n".join(results)
 
 
-def _build_payload(prompt: str, mode: str) -> dict:
-    """Create payload for OpenAI Chat Completions API."""
-    search_query = _create_search_query(prompt)
+_router: Optional[SemanticRouter] = None
+_model_cache: List[str] = []
+
+
+def list_openai_models(api_key: str) -> List[str]:
+    """Return available OpenAI model IDs.
+
+    Falls back to ``gpt-4o-mini`` if fetching fails or the SDK is absent.
+    """
+    global _model_cache
+    if _model_cache:
+        return _model_cache
+    if OpenAI is None:
+        _model_cache = ["gpt-4o-mini"]
+        return _model_cache
+    try:
+        client = OpenAI(api_key=api_key)
+        resp = client.models.list()
+        models = [m.id for m in resp.data if m.id.startswith("gpt")]
+        _model_cache = models or ["gpt-4o-mini"]
+    except Exception:  # pragma: no cover - network or auth issues
+        _model_cache = ["gpt-4o-mini"]
+    return _model_cache
+
+
+def get_router(api_key: str) -> SemanticRouter:
+    """Initialize or return a cached Semantic Router for all models."""
+    global _router
+    if _router is None:
+        models = list_openai_models(api_key)
+        routes: List[Route] = []
+        default_llm: Optional[OpenAILLM] = None
+        for model in models:
+            llm = OpenAILLM(name=model, openai_api_key=api_key)
+            routes.append(Route(name=model, utterances=[model], llm=llm))
+            if default_llm is None:
+                default_llm = llm
+        if default_llm is None:  # pragma: no cover - safeguard
+            default_llm = OpenAILLM(name="gpt-4o-mini", openai_api_key=api_key)
+            routes.append(Route(name="gpt-4o-mini", utterances=["gpt-4o-mini"], llm=default_llm))
+        _router = SemanticRouter(llm=default_llm, routes=routes)
+    return _router
+
+
+def _build_messages(prompt: str, mode: str, model: str) -> List[Message]:
+    """Create messages for the OpenAI model via Semantic Router."""
+    search_query = _create_search_query(prompt, model)
     search_info = _web_search(search_query)
     if mode == "qa":
         context = _gather_codebase()
@@ -155,26 +197,23 @@ def _build_payload(prompt: str, mode: str) -> dict:
             f"You are {AGENT_NAME}, an AI assistant answering questions about the NovaAtom codebase."
         )
         user_content = (
-            f"Repository contents:\n{context}\n\nSearch query: {search_query}\nWeb search results:\n{search_info}\n\nQuestion: {prompt}"
+            f"Repository contents:\n{context}\n\nSearch query: {search_query}\n"
+            f"Web search results:\n{search_info}\n\nQuestion: {prompt}"
         )
     else:
         system_content = f"You are {AGENT_NAME}, an AI coding assistant."
         user_content = (
             f"Search query: {search_query}\nWeb search results:\n{search_info}\n\nPrompt: {prompt}"
         )
-
-    return {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": user_content},
-        ],
-    }
+    return [
+        Message(role="system", content=system_content),
+        Message(role="user", content=user_content),
+    ]
 
 
-def _build_edit_payload(file_content: str, instructions: str) -> dict:
-    """Create payload instructing the model to modify file contents."""
-    search_query = _create_search_query(instructions)
+def _build_edit_messages(file_content: str, instructions: str, model: str) -> List[Message]:
+    """Create messages instructing the model to modify file contents."""
+    search_query = _create_search_query(instructions, model)
     search_info = _web_search(search_query)
     system_content = (
         f"You are {AGENT_NAME}, an AI coding assistant that edits files. "
@@ -185,56 +224,54 @@ def _build_edit_payload(file_content: str, instructions: str) -> dict:
         f"Current file contents:\n{file_content}\n\n"
         f"Edit instructions: {instructions}"
     )
-    return {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": user_content},
-        ],
-    }
+    return [
+        Message(role="system", content=system_content),
+        Message(role="user", content=user_content),
+    ]
 
 
-def query_ai(prompt: str, mode: str) -> str:
-    """Send a prompt to the AI model and return the response text."""
+def query_ai(prompt: str, mode: str, model: Optional[str] = None) -> str:
+    """Send a prompt to the AI model and return the response text.
+
+    Args:
+        prompt: User prompt.
+        mode: Either ``"coding"`` or ``"qa"``.
+        model: Optional OpenAI model name; defaults to the first available model.
+    """
     api_key = load_api_key()
-
-    response = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        data=json.dumps(_build_payload(prompt, mode)),
-        timeout=30,
-    )
-    if response.status_code != 200:
-        raise RuntimeError(f"API request failed: {response.text}")
-    data = response.json()
-    return data["choices"][0]["message"]["content"].strip()
+    router = get_router(api_key)
+    model_name = model or list_openai_models(api_key)[0]
+    messages = _build_messages(prompt, mode, model_name)
+    route = router.check_for_matching_routes(model_name)
+    llm = route.llm if route and route.llm else router.llm
+    if llm is None:
+        raise RuntimeError("No LLM configured for Semantic Router.")
+    return llm(messages).strip()
 
 
-def edit_file(path: str, instructions: str) -> None:
-    """Use the AI agent to edit a local file in place."""
+def edit_file(path: str, instructions: str, model: Optional[str] = None) -> None:
+    """Use the AI agent to edit a local file in place.
+
+    Args:
+        path: File to modify.
+        instructions: Natural-language edit instructions.
+        model: Optional OpenAI model name.
+    """
     api_key = load_api_key()
+    router = get_router(api_key)
+    model_name = model or list_openai_models(api_key)[0]
     try:
         with open(path, "r", encoding="utf-8") as fh:
             original = fh.read()
     except OSError as exc:
         raise RuntimeError(f"Failed to read {path}: {exc}")
 
-    response = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        data=json.dumps(_build_edit_payload(original, instructions)),
-        timeout=30,
-    )
-    if response.status_code != 200:
-        raise RuntimeError(f"API request failed: {response.text}")
-    data = response.json()
-    new_content = data["choices"][0]["message"]["content"]
+    messages = _build_edit_messages(original, instructions, model_name)
+    route = router.check_for_matching_routes(model_name)
+    llm = route.llm if route and route.llm else router.llm
+    if llm is None:
+        raise RuntimeError("No LLM configured for Semantic Router.")
+    new_content = llm(messages)
     try:
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(new_content)
@@ -259,15 +296,19 @@ def main(argv: List[str]) -> int:
         metavar="FILE",
         help="Edit FILE in place using the prompt as instructions.",
     )
+    parser.add_argument(
+        "--model",
+        help="Specify which OpenAI model to use (defaults to the first available).",
+    )
     ns = parser.parse_args(argv)
 
     prompt = " ".join(ns.prompt)
     try:
         if ns.edit:
-            edit_file(ns.edit, prompt)
+            edit_file(ns.edit, prompt, ns.model)
             print(f"{AGENT_NAME}: Updated {ns.edit}")
         else:
-            answer = query_ai(prompt, ns.mode)
+            answer = query_ai(prompt, ns.mode, ns.model)
             print(f"{AGENT_NAME}: {answer}")
     except RuntimeError as exc:
         print(exc)
