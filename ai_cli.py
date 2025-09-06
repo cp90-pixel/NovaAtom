@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Simple CLI tool to interact with an AI coding agent via OpenAI API."""
+"""Simple CLI tool to interact with an AI coding agent via OpenAI API.
+
+The OpenAI API key is stored in a small JSON settings file so that it can be
+shared between the desktop editor and this CLI. The key must be entered via the
+CodeSmith settings page in the editor.
+"""
 import argparse
 import json
 import os
@@ -11,6 +16,43 @@ import requests
 
 AGENT_NAME = "CodeSmith"
 YACY_SEARCH_URL = os.environ.get("YACY_SEARCH_URL", "http://localhost:8090/yacysearch.json")
+
+SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".codesmith_settings.json")
+
+
+def load_settings() -> dict:
+    """Load persisted settings for CodeSmith.
+
+    Returns an empty dictionary if the settings file does not exist or cannot
+    be read.
+    """
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def save_settings(settings: dict) -> None:
+    """Persist CodeSmith settings to disk."""
+    os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as fh:
+        json.dump(settings, fh)
+
+
+def load_api_key() -> str:
+    """Retrieve the stored OpenAI API key.
+
+    Raises:
+        RuntimeError: If the key has not been configured via the CodeSmith
+            settings page.
+    """
+    api_key = load_settings().get("api_key")
+    if not api_key:
+        raise RuntimeError(
+            "OpenAI API key not configured. Set it through the CodeSmith settings page."
+        )
+    return api_key
 
 
 def _gather_codebase() -> str:
@@ -30,8 +72,9 @@ def _gather_codebase() -> str:
 
 def _create_search_query(prompt: str) -> str:
     """Ask the AI to craft a concise web search query."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+    try:
+        api_key = load_api_key()
+    except RuntimeError:
         return prompt
     payload = {
         "model": "gpt-4o-mini",
@@ -153,9 +196,7 @@ def _build_edit_payload(file_content: str, instructions: str) -> dict:
 
 def query_ai(prompt: str, mode: str) -> str:
     """Send a prompt to the AI model and return the response text."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+    api_key = load_api_key()
 
     response = requests.post(
         "https://api.openai.com/v1/chat/completions",
@@ -174,9 +215,7 @@ def query_ai(prompt: str, mode: str) -> str:
 
 def edit_file(path: str, instructions: str) -> None:
     """Use the AI agent to edit a local file in place."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+    api_key = load_api_key()
     try:
         with open(path, "r", encoding="utf-8") as fh:
             original = fh.read()
