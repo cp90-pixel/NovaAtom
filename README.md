@@ -17,6 +17,7 @@ This will launch the editor where you can open, edit, and save files.
 - Replace text throughout the document (`Ctrl+H`).
 - Run shell commands in an integrated terminal (`Ctrl+T`).
 - Jump to function or class definitions (`F12`).
+- Autocomplete suggestions for keywords and existing words (`Ctrl+Space`).
 
 ## AI CLI Coding Agent
 
