@@ -11,18 +11,30 @@ import subprocess
 import threading
 import requests
 
-from ai_cli import AGENT_NAME, _build_edit_payload, query_ai
+from ai_cli import (
+    AGENT_NAME,
+    _build_edit_payload,
+    load_api_key,
+    load_settings,
+    query_ai,
+    save_settings,
+)
 
 class CodeEditor:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Basic Code Editor")
+        self.settings = load_settings()
+        self.allow_codesmith_terminal = tk.BooleanVar(
+            value=self.settings.get("allow_terminal", False)
+        )
+        self.api_key = self.settings.get("api_key")
         self._setup_widgets()
         self.file_path = None
         self.extensions = []
         self._load_extensions()
-        if not os.environ.get("OPENAI_API_KEY"):
-            self._set_api_key()
+        if not self.api_key:
+            self._open_settings()
 
     def _setup_widgets(self):
         self.text = tk.Text(self.root, wrap="none", undo=True)
@@ -45,7 +57,9 @@ class CodeEditor:
         menubar.add_cascade(label="Edit", menu=edit_menu)
 
         terminal_menu = tk.Menu(menubar, tearoff=0)
-        terminal_menu.add_command(label="Open Terminal", command=self.open_terminal, accelerator="Ctrl+T")
+        terminal_menu.add_command(
+            label="Open Terminal", command=self.open_terminal, accelerator="Ctrl+T"
+        )
         menubar.add_cascade(label="Terminal", menu=terminal_menu)
 
         codesmith_menu = tk.Menu(menubar, tearoff=0)
@@ -57,15 +71,7 @@ class CodeEditor:
             label="Run Command", command=self.codesmith_run_command
         )
         codesmith_menu.add_separator()
-        self.allow_codesmith_terminal = tk.BooleanVar(value=False)
-        settings_menu = tk.Menu(codesmith_menu, tearoff=0)
-        settings_menu.add_checkbutton(
-            label="Allow terminal commands",
-            variable=self.allow_codesmith_terminal,
-        )
-        codesmith_menu.add_cascade(label="Settings", menu=settings_menu)
-        codesmith_menu.add_separator()
-        codesmith_menu.add_command(label="Set OpenAI API Key", command=self._set_api_key)
+        codesmith_menu.add_command(label="Settings", command=self._open_settings)
         menubar.add_cascade(label="CodeSmith", menu=codesmith_menu)
 
         self.extensions_menu = tk.Menu(menubar, tearoff=0)
@@ -84,12 +90,51 @@ class CodeEditor:
     def add_extension_command(self, label, command):
         self.extensions_menu.add_command(label=label, command=command)
 
-    def _set_api_key(self):
-        api_key = simpledialog.askstring(
-            "OpenAI API Key", "Enter your OpenAI API key:", show="*"
+    def _open_settings(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("CodeSmith Settings")
+
+        tk.Label(dialog, text="OpenAI API Key:").grid(
+            row=0, column=0, sticky="w", padx=5, pady=5
         )
-        if api_key:
-            os.environ["OPENAI_API_KEY"] = api_key.strip()
+        api_entry = tk.Entry(dialog, show="*")
+        api_entry.insert(0, self.api_key or "")
+        api_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        allow_cb = tk.Checkbutton(
+            dialog,
+            text="Allow terminal commands",
+            variable=self.allow_codesmith_terminal,
+        )
+        allow_cb.grid(row=1, column=0, columnspan=2, sticky="w", padx=5, pady=5)
+
+        def save():
+            key = api_entry.get().strip()
+            if not key:
+                messagebox.showerror(AGENT_NAME, "API key is required.")
+                return
+            self.api_key = key
+            settings = {
+                "api_key": self.api_key,
+                "allow_terminal": self.allow_codesmith_terminal.get(),
+            }
+            try:
+                save_settings(settings)
+                self.settings = settings
+            except Exception as exc:
+                messagebox.showerror(
+                    AGENT_NAME, f"Failed to save settings: {exc}"
+                )
+                return
+            dialog.destroy()
+
+        tk.Button(dialog, text="Save", command=save).grid(row=2, column=0, pady=5)
+        tk.Button(dialog, text="Cancel", command=dialog.destroy).grid(
+            row=2, column=1, pady=5
+        )
+
+        dialog.grab_set()
+        self.root.wait_window(dialog)
 
     def _load_extensions(self):
         ext_dir = os.path.join(os.path.dirname(__file__), "extensions")
@@ -242,9 +287,10 @@ class CodeEditor:
         )
         if not instructions:
             return
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            messagebox.showerror(AGENT_NAME, "OPENAI_API_KEY environment variable is not set")
+        try:
+            api_key = load_api_key()
+        except RuntimeError as exc:
+            messagebox.showerror(AGENT_NAME, str(exc))
             return
         content = self.text.get("1.0", tk.END)
         payload = _build_edit_payload(content, instructions)
@@ -307,8 +353,9 @@ class CodeEditor:
 
     def _fetch_code_suggestions(self, prefix: str):
         """Query the CodeSmith agent for code completion suggestions."""
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
+        try:
+            api_key = load_api_key()
+        except RuntimeError:
             return []
         # Limit context to keep requests small
         context = self.text.get("1.0", tk.INSERT)[-400:]

@@ -29,8 +29,8 @@ offers basic editing features but does **not** include CodeSmith.
 - Replace text throughout the document (`Ctrl+H`).
 - Run shell commands in an integrated terminal (`Ctrl+T`).
 - Jump to function or class definitions (`F12`).
-- CodeSmith-powered code autocomplete (`Ctrl+Space`). The editor prompts for your OpenAI API key if it isn't set. *(Desktop only)*
-- Ask questions or apply edits with CodeSmith directly from the editor via the **CodeSmith** menu, which also lets you update your API key. *(Desktop only)*
+- CodeSmith-powered code autocomplete (`Ctrl+Space`). Configure your OpenAI API key via **CodeSmith > Settings**. *(Desktop only)*
+- Ask questions or apply edits with CodeSmith directly from the editor via the **CodeSmith** menu, which also provides access to settings for the API key. *(Desktop only)*
 - When enabled in **CodeSmith > Settings**, CodeSmith can craft and run terminal commands on your behalf.
 - Basic web-based editor accessible at `http://localhost:5000` when running `web_editor.py`.
 - Load custom extensions from the `extensions/` directory to add new commands.
@@ -46,7 +46,7 @@ word count command.
 ## AI CLI Coding Agent
 
 A small helper script `ai_cli.py` lets you send prompts to the CodeSmith agent from the command line.
-Set your OpenAI API key in the `OPENAI_API_KEY` environment variable and run:
+Make sure you have entered your OpenAI API key in the editor's **CodeSmith > Settings** dialog and run:
 
 ```
 python ai_cli.py "Explain recursion"
