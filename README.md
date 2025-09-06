@@ -18,3 +18,14 @@ This will launch the editor where you can open, edit, and save files.
 - Run shell commands in an integrated terminal (`Ctrl+T`).
 - Jump to function or class definitions (`F12`).
 
+## AI CLI Coding Agent
+
+A small helper script `ai_cli.py` lets you send prompts to an AI model from the command line.
+Set your OpenAI API key in the `OPENAI_API_KEY` environment variable and run:
+
+```
+python ai_cli.py "Explain recursion"
+```
+
+The response from the model will be printed to the terminal. The script uses the
+`requests` library and the OpenAI Chat Completions API.
