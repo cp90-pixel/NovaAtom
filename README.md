@@ -1,14 +1,26 @@
 # NovaAtom
 
-This repository contains a basic code editor built with Tkinter.
+This repository contains a basic code editor built with Tkinter and a simple
+web-based variant.
 
 ## Usage
+
+### Desktop editor
 
 ```
 python code_editor.py
 ```
 
-This will launch the editor where you can open, edit, and save files.
+This will launch the desktop editor where you can open, edit, and save files.
+
+### Web editor
+
+```
+python web_editor.py
+```
+
+Open <http://localhost:5000> in your browser to edit files. The web version
+offers basic editing features but does **not** include CodeSmith.
 
 ## Features
 
@@ -17,8 +29,9 @@ This will launch the editor where you can open, edit, and save files.
 - Replace text throughout the document (`Ctrl+H`).
 - Run shell commands in an integrated terminal (`Ctrl+T`).
 - Jump to function or class definitions (`F12`).
-- CodeSmith-powered code autocomplete (`Ctrl+Space`). The editor prompts for your OpenAI API key if it isn't set.
-- Ask questions or apply edits with CodeSmith directly from the editor via the **CodeSmith** menu, which also lets you update your API key.
+- CodeSmith-powered code autocomplete (`Ctrl+Space`). The editor prompts for your OpenAI API key if it isn't set. *(Desktop only)*
+- Ask questions or apply edits with CodeSmith directly from the editor via the **CodeSmith** menu, which also lets you update your API key. *(Desktop only)*
+- Basic web-based editor accessible at `http://localhost:5000` when running `web_editor.py`.
 - Load custom extensions from the `extensions/` directory to add new commands.
 
 ## Extensions
