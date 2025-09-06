@@ -62,11 +62,12 @@ def _create_search_query(prompt: str) -> str:
 
 
 def _web_search(query: str, max_results: int = 5) -> str:
-    """Perform a YaCy web search and return top result snippets.
+    """Perform a YaCy web search and return result snippets.
 
-    The public YaCy peer is queried via its JSON API. Only the title and URL of
-    each result are returned to keep the context compact. Network failures are
-    ignored so that lack of search results does not break the main workflow.
+    Besides the title and URL, a short text snippet is returned for each result
+    to provide more context. Network failures or unexpected responses are
+    handled gracefully so that the main workflow continues even if no web
+    results are available.
     """
 
     try:
@@ -75,6 +76,7 @@ def _web_search(query: str, max_results: int = 5) -> str:
             params={"query": query, "rows": max_results},
             timeout=10,
         )
+        resp.raise_for_status()
         data = resp.json()
     except Exception as exc:  # pragma: no cover - network errors
         return f"Web search failed: {exc}"
@@ -84,7 +86,15 @@ def _web_search(query: str, max_results: int = 5) -> str:
     for item in items[:max_results]:
         title = item.get("title", "No title").strip()
         link = item.get("link") or ""
-        results.append(f"{title} - {link}")
+        snippet = (
+            item.get("description")
+            or item.get("about")
+            or ""
+        ).strip()
+        snippet = " ".join(snippet.split())  # collapse whitespace
+        if len(snippet) > 160:
+            snippet = f"{snippet[:157]}..."
+        results.append(f"{title} - {link}\n  {snippet}" if snippet else f"{title} - {link}")
 
     if not results:
         return "No web results found."
