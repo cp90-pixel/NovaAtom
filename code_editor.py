@@ -18,6 +18,8 @@ class CodeEditor:
         self.root.title("Basic Code Editor")
         self._setup_widgets()
         self.file_path = None
+        if not os.environ.get("OPENAI_API_KEY"):
+            self._set_api_key()
 
     def _setup_widgets(self):
         self.text = tk.Text(self.root, wrap="none", undo=True)
@@ -46,6 +48,8 @@ class CodeEditor:
         codesmith_menu = tk.Menu(menubar, tearoff=0)
         codesmith_menu.add_command(label="Ask CodeSmith", command=self.ask_codesmith)
         codesmith_menu.add_command(label="Edit with CodeSmith", command=self.codesmith_edit)
+        codesmith_menu.add_separator()
+        codesmith_menu.add_command(label="Set OpenAI API Key", command=self._set_api_key)
         menubar.add_cascade(label="CodeSmith", menu=codesmith_menu)
 
         self.root.config(menu=menubar)
@@ -57,6 +61,13 @@ class CodeEditor:
         self.root.bind_all("<Control-t>", lambda event: self.open_terminal())
         self.root.bind_all("<F12>", lambda event: self.goto_definition())
         self.root.bind_all("<Control-space>", lambda event: self.show_autocomplete())
+
+    def _set_api_key(self):
+        api_key = simpledialog.askstring(
+            "OpenAI API Key", "Enter your OpenAI API key:", show="*"
+        )
+        if api_key:
+            os.environ["OPENAI_API_KEY"] = api_key.strip()
 
     def new_file(self):
         if self._confirm_discard_changes():

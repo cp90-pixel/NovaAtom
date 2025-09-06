@@ -17,8 +17,8 @@ This will launch the editor where you can open, edit, and save files.
 - Replace text throughout the document (`Ctrl+H`).
 - Run shell commands in an integrated terminal (`Ctrl+T`).
 - Jump to function or class definitions (`F12`).
-- CodeSmith-powered code autocomplete (`Ctrl+Space`; requires `OPENAI_API_KEY`).
-- Ask questions or apply edits with CodeSmith directly from the editor via the **CodeSmith** menu.
+ - CodeSmith-powered code autocomplete (`Ctrl+Space`). The editor prompts for your OpenAI API key if it isn't set.
+ - Ask questions or apply edits with CodeSmith directly from the editor via the **CodeSmith** menu, which also lets you update your API key.
 
 ## AI CLI Coding Agent
 
