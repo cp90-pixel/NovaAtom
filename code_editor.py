@@ -3,6 +3,7 @@ import sys
 import re
 import keyword
 import json
+import importlib
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 from tkinter.scrolledtext import ScrolledText
@@ -18,6 +19,8 @@ class CodeEditor:
         self.root.title("Basic Code Editor")
         self._setup_widgets()
         self.file_path = None
+        self.extensions = []
+        self._load_extensions()
         if not os.environ.get("OPENAI_API_KEY"):
             self._set_api_key()
 
@@ -52,6 +55,9 @@ class CodeEditor:
         codesmith_menu.add_command(label="Set OpenAI API Key", command=self._set_api_key)
         menubar.add_cascade(label="CodeSmith", menu=codesmith_menu)
 
+        self.extensions_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Extensions", menu=self.extensions_menu)
+
         self.root.config(menu=menubar)
         self.root.bind_all("<Control-n>", lambda event: self.new_file())
         self.root.bind_all("<Control-o>", lambda event: self.open_file())
@@ -62,12 +68,40 @@ class CodeEditor:
         self.root.bind_all("<F12>", lambda event: self.goto_definition())
         self.root.bind_all("<Control-space>", lambda event: self.show_autocomplete())
 
+    def add_extension_command(self, label, command):
+        self.extensions_menu.add_command(label=label, command=command)
+
     def _set_api_key(self):
         api_key = simpledialog.askstring(
             "OpenAI API Key", "Enter your OpenAI API key:", show="*"
         )
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key.strip()
+
+    def _load_extensions(self):
+        ext_dir = os.path.join(os.path.dirname(__file__), "extensions")
+        if not os.path.isdir(ext_dir):
+            return
+        sys.path.insert(0, ext_dir)
+        for fname in os.listdir(ext_dir):
+            if not fname.endswith(".py") or fname.startswith("_"):
+                continue
+            mod_name = os.path.splitext(fname)[0]
+            try:
+                module = importlib.import_module(mod_name)
+            except Exception as exc:
+                print(f"Failed to load extension {mod_name}: {exc}", file=sys.stderr)
+                continue
+            if hasattr(module, "register"):
+                try:
+                    module.register(self)
+                    self.extensions.append(module)
+                except Exception as exc:
+                    print(
+                        f"Error initializing extension {mod_name}: {exc}",
+                        file=sys.stderr,
+                    )
+        sys.path.pop(0)
 
     def new_file(self):
         if self._confirm_discard_changes():

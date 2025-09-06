@@ -17,8 +17,17 @@ This will launch the editor where you can open, edit, and save files.
 - Replace text throughout the document (`Ctrl+H`).
 - Run shell commands in an integrated terminal (`Ctrl+T`).
 - Jump to function or class definitions (`F12`).
- - CodeSmith-powered code autocomplete (`Ctrl+Space`). The editor prompts for your OpenAI API key if it isn't set.
- - Ask questions or apply edits with CodeSmith directly from the editor via the **CodeSmith** menu, which also lets you update your API key.
+- CodeSmith-powered code autocomplete (`Ctrl+Space`). The editor prompts for your OpenAI API key if it isn't set.
+- Ask questions or apply edits with CodeSmith directly from the editor via the **CodeSmith** menu, which also lets you update your API key.
+- Load custom extensions from the `extensions/` directory to add new commands.
+
+## Extensions
+
+Place Python files in an `extensions/` directory alongside `code_editor.py`. Each
+file should define a `register(editor)` function that receives the
+`CodeEditor` instance. Use this hook to add menu items or otherwise customize
+the editor. See `extensions/word_count.py` for an example that adds a simple
+word count command.
 
 ## AI CLI Coding Agent
 
