@@ -71,3 +71,11 @@ docker run -d --name yacy -p 8090:8090 -p 8443:8443 yacy/yacy_search_server
 
 If your instance runs elsewhere, set the `YACY_SEARCH_URL` environment variable
 to the full search endpoint, e.g. `http://myhost:8090/yacysearch.json`.
+
+## Commitment to Open Source
+
+**This pledge is permanent and irrevocable.** I guarantee that every past,
+present, and future version of NovaAtom will remain entirely open source and
+licensed under the MIT License. There will never be a closed-source edition or
+license change that restricts your freedom to use, modify, and share this
+project.
