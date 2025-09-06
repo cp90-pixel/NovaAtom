@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 from tkinter.scrolledtext import ScrolledText
@@ -30,6 +31,7 @@ class CodeEditor:
         edit_menu = tk.Menu(menubar, tearoff=0)
         edit_menu.add_command(label="Find", command=self.find_text, accelerator="Ctrl+F")
         edit_menu.add_command(label="Replace", command=self.replace_text, accelerator="Ctrl+H")
+        edit_menu.add_command(label="Go to Definition", command=self.goto_definition, accelerator="F12")
         menubar.add_cascade(label="Edit", menu=edit_menu)
 
         terminal_menu = tk.Menu(menubar, tearoff=0)
@@ -43,6 +45,7 @@ class CodeEditor:
         self.root.bind_all("<Control-f>", lambda event: self.find_text())
         self.root.bind_all("<Control-h>", lambda event: self.replace_text())
         self.root.bind_all("<Control-t>", lambda event: self.open_terminal())
+        self.root.bind_all("<F12>", lambda event: self.goto_definition())
 
     def new_file(self):
         if self._confirm_discard_changes():
@@ -118,6 +121,34 @@ class CodeEditor:
             return
         self.text.delete("1.0", tk.END)
         self.text.insert("1.0", new_content)
+
+    def goto_definition(self):
+        """Jump to the definition of the word under the cursor."""
+        word = self._get_current_word()
+        if not word:
+            messagebox.showinfo("Go to Definition", "No symbol selected")
+            return
+
+        pattern = re.compile(rf"^\s*(def|class)\s+{re.escape(word)}\b")
+        lines = self.text.get("1.0", tk.END).splitlines()
+        for i, line in enumerate(lines, start=1):
+            if pattern.search(line):
+                self.text.tag_remove("definition", "1.0", tk.END)
+                start = f"{i}.0"
+                end = f"{i}.0 lineend"
+                self.text.tag_add("definition", start, end)
+                self.text.tag_config("definition", background="lightblue")
+                self.text.mark_set(tk.INSERT, start)
+                self.text.see(start)
+                return
+        messagebox.showinfo("Go to Definition", f"Definition for '{word}' not found")
+
+    def _get_current_word(self) -> str:
+        index = self.text.index(tk.INSERT)
+        start = self.text.index(f"{index} wordstart")
+        end = self.text.index(f"{index} wordend")
+        word = self.text.get(start, end).strip()
+        return word
 
     def open_terminal(self):
         if hasattr(self, "terminal_window") and self.terminal_window.winfo_exists():
