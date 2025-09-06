@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import keyword
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 from tkinter.scrolledtext import ScrolledText
@@ -46,6 +47,7 @@ class CodeEditor:
         self.root.bind_all("<Control-h>", lambda event: self.replace_text())
         self.root.bind_all("<Control-t>", lambda event: self.open_terminal())
         self.root.bind_all("<F12>", lambda event: self.goto_definition())
+        self.root.bind_all("<Control-space>", lambda event: self.show_autocomplete())
 
     def new_file(self):
         if self._confirm_discard_changes():
@@ -149,6 +151,54 @@ class CodeEditor:
         end = self.text.index(f"{index} wordend")
         word = self.text.get(start, end).strip()
         return word
+
+    def _get_current_prefix(self) -> str:
+        index = self.text.index(tk.INSERT)
+        start = self.text.index(f"{index} wordstart")
+        prefix = self.text.get(start, index)
+        return prefix
+
+    def show_autocomplete(self):
+        prefix = self._get_current_prefix()
+        suggestions = set(keyword.kwlist)
+        document_words = re.findall(r"\b\w+\b", self.text.get("1.0", tk.END))
+        suggestions.update(document_words)
+        matches = sorted({s for s in suggestions if s.startswith(prefix) and s != prefix})
+        if not matches:
+            return
+        if len(matches) == 1:
+            self.text.insert(tk.INSERT, matches[0][len(prefix):])
+            return
+        self._open_autocomplete_window(matches, prefix)
+
+    def _open_autocomplete_window(self, matches, prefix):
+        if hasattr(self, "autocomplete_window") and self.autocomplete_window.winfo_exists():
+            self.autocomplete_window.destroy()
+        bbox = self.text.bbox(tk.INSERT)
+        if not bbox:
+            return
+        x, y, width, height = bbox
+        x += self.text.winfo_rootx()
+        y += self.text.winfo_rooty() + height
+        self.autocomplete_window = tk.Toplevel(self.root)
+        self.autocomplete_window.wm_overrideredirect(True)
+        self.autocomplete_window.geometry(f"+{x}+{y}")
+        listbox = tk.Listbox(self.autocomplete_window, height=min(6, len(matches)))
+        for m in matches:
+            listbox.insert(tk.END, m)
+        listbox.pack()
+        listbox.bind("<Return>", lambda event: self._insert_autocomplete(prefix))
+        listbox.bind("<Double-Button-1>", lambda event: self._insert_autocomplete(prefix))
+        listbox.bind("<Escape>", lambda event: self.autocomplete_window.destroy())
+        listbox.focus_set()
+        self.autocomplete_listbox = listbox
+
+    def _insert_autocomplete(self, prefix):
+        selection = self.autocomplete_listbox.curselection()
+        if selection:
+            value = self.autocomplete_listbox.get(selection[0])
+            self.text.insert(tk.INSERT, value[len(prefix):])
+        self.autocomplete_window.destroy()
 
     def open_terminal(self):
         if hasattr(self, "terminal_window") and self.terminal_window.winfo_exists():
