@@ -1,3 +1,5 @@
+import os
+import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 
@@ -111,7 +113,16 @@ class CodeEditor:
 
 
 def main():
-    root = tk.Tk()
+    if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+        print("No display detected. This application requires a graphical display.")
+        return
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        print(
+            "Unable to initialize Tk. Ensure a graphical display is available."
+        )
+        return
     editor = CodeEditor(root)
     root.mainloop()
 
