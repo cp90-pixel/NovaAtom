@@ -37,6 +37,18 @@ python ai_cli.py --mode qa "What does ai_cli.py do?"
 
 The response from CodeSmith will be printed to the terminal. The script uses the
 `requests` library and the OpenAI Chat Completions API. For both modes the CLI
-asks the model to craft a focused search query, runs it against the YaCy search
-engine, and feeds the top results — including a short snippet for context — to
-the model so that answers can include up-to-date information from the internet.
+asks the model to craft a focused search query, runs it against a local YaCy
+search engine, and feeds the top results — including a short snippet for context
+— to the model so that answers can include up-to-date information from the internet.
+
+### Running YaCy locally
+
+By default `ai_cli.py` queries `http://localhost:8090`. Start your own YaCy
+instance via Docker:
+
+```
+docker run -d --name yacy -p 8090:8090 -p 8443:8443 yacy/yacy_search_server
+```
+
+If your instance runs elsewhere, set the `YACY_SEARCH_URL` environment variable
+to the full search endpoint, e.g. `http://myhost:8090/yacysearch.json`.

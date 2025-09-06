@@ -10,6 +10,7 @@ import requests
 
 
 AGENT_NAME = "CodeSmith"
+YACY_SEARCH_URL = os.environ.get("YACY_SEARCH_URL", "http://localhost:8090/yacysearch.json")
 
 
 def _gather_codebase() -> str:
@@ -72,7 +73,7 @@ def _web_search(query: str, max_results: int = 5) -> str:
 
     try:
         resp = requests.get(
-            "https://yacy.searchlab.eu/yacysearch.json",
+            YACY_SEARCH_URL,
             params={"query": query, "rows": max_results},
             timeout=10,
         )
