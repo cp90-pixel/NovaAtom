@@ -16,4 +16,5 @@ This will launch the editor where you can open, edit, and save files.
 - Find text within the document (`Ctrl+F`).
 - Replace text throughout the document (`Ctrl+H`).
 - Run shell commands in an integrated terminal (`Ctrl+T`).
+- Jump to function or class definitions (`F12`).
 
