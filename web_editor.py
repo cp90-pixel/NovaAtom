@@ -6,21 +6,46 @@ app = Flask(__name__)
 
 EDITOR_HTML = """
 <!doctype html>
+<html>
+<head>
 <title>NovaAtom Web Editor</title>
-<textarea id="editor" style="width:100%;height:80vh;">{{ content }}</textarea>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/python/python.min.js"></script>
+</head>
+<body>
+<textarea id="editor">{{ content }}</textarea>
 <div style="margin-top:10px;">
   <input id="path" type="text" value="{{ path }}" placeholder="File path" style="width:70%;"/>
   <button onclick="save()">Save</button>
+  <span id="status" style="margin-left:10px;"></span>
 </div>
 <script>
+var editor = CodeMirror.fromTextArea(document.getElementById('editor'), {
+  lineNumbers: true,
+  lineWrapping: true,
+  mode: 'python'
+});
+editor.setSize('100%', '80vh');
 function save() {
   fetch('/save', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({path: document.getElementById('path').value, content: document.getElementById('editor').value})
-  }).then(resp => resp.json()).then(data => alert(data.message || data.status));
+    body: JSON.stringify({path: document.getElementById('path').value, content: editor.getValue()})
+  }).then(resp => resp.json()).then(data => {
+    document.getElementById('status').textContent = data.message || data.status;
+    setTimeout(() => { document.getElementById('status').textContent = ''; }, 2000);
+  });
 }
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    save();
+  }
+});
 </script>
+</body>
+</html>
 """
 
 @app.route('/')
