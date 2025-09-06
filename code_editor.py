@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog
 
 class CodeEditor:
     def __init__(self, root: tk.Tk):
@@ -22,10 +22,17 @@ class CodeEditor:
         file_menu.add_command(label="Exit", command=self.root.quit)
         menubar.add_cascade(label="File", menu=file_menu)
 
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        edit_menu.add_command(label="Find", command=self.find_text, accelerator="Ctrl+F")
+        edit_menu.add_command(label="Replace", command=self.replace_text, accelerator="Ctrl+H")
+        menubar.add_cascade(label="Edit", menu=edit_menu)
+
         self.root.config(menu=menubar)
         self.root.bind_all("<Control-n>", lambda event: self.new_file())
         self.root.bind_all("<Control-o>", lambda event: self.open_file())
         self.root.bind_all("<Control-s>", lambda event: self.save_file())
+        self.root.bind_all("<Control-f>", lambda event: self.find_text())
+        self.root.bind_all("<Control-h>", lambda event: self.replace_text())
 
     def new_file(self):
         if self._confirm_discard_changes():
@@ -73,6 +80,34 @@ class CodeEditor:
 
     def _confirm_discard_changes(self) -> bool:
         return messagebox.askyesno("Confirm", "Discard current changes?")
+
+    def find_text(self):
+        query = simpledialog.askstring("Find", "Enter text to find:")
+        if query:
+            start_pos = self.text.search(query, "1.0", stopindex=tk.END)
+            self.text.tag_remove("find", "1.0", tk.END)
+            if start_pos:
+                end_pos = f"{start_pos}+{len(query)}c"
+                self.text.tag_add("find", start_pos, end_pos)
+                self.text.tag_config("find", background="yellow")
+                self.text.see(start_pos)
+            else:
+                messagebox.showinfo("Find", "Text not found")
+
+    def replace_text(self):
+        query = simpledialog.askstring("Replace", "Enter text to find:")
+        if query is None:
+            return
+        replacement = simpledialog.askstring("Replace", "Enter replacement text:")
+        if replacement is None:
+            return
+        content = self.text.get("1.0", tk.END)
+        new_content = content.replace(query, replacement)
+        if content == new_content:
+            messagebox.showinfo("Replace", "Text not found")
+            return
+        self.text.delete("1.0", tk.END)
+        self.text.insert("1.0", new_content)
 
 
 def main():
