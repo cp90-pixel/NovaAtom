@@ -50,7 +50,20 @@ class CodeEditor:
 
         codesmith_menu = tk.Menu(menubar, tearoff=0)
         codesmith_menu.add_command(label="Ask CodeSmith", command=self.ask_codesmith)
-        codesmith_menu.add_command(label="Edit with CodeSmith", command=self.codesmith_edit)
+        codesmith_menu.add_command(
+            label="Edit with CodeSmith", command=self.codesmith_edit
+        )
+        codesmith_menu.add_command(
+            label="Run Command", command=self.codesmith_run_command
+        )
+        codesmith_menu.add_separator()
+        self.allow_codesmith_terminal = tk.BooleanVar(value=False)
+        settings_menu = tk.Menu(codesmith_menu, tearoff=0)
+        settings_menu.add_checkbutton(
+            label="Allow terminal commands",
+            variable=self.allow_codesmith_terminal,
+        )
+        codesmith_menu.add_cascade(label="Settings", menu=settings_menu)
         codesmith_menu.add_separator()
         codesmith_menu.add_command(label="Set OpenAI API Key", command=self._set_api_key)
         menubar.add_cascade(label="CodeSmith", menu=codesmith_menu)
@@ -254,6 +267,43 @@ class CodeEditor:
             self.text.insert("1.0", new_content)
         except Exception as exc:
             messagebox.showerror(AGENT_NAME, str(exc))
+
+    def codesmith_run_command(self):
+        if not self.allow_codesmith_terminal.get():
+            messagebox.showwarning(
+                AGENT_NAME,
+                "Enable terminal commands in CodeSmith settings to use this feature.",
+            )
+            return
+        task = simpledialog.askstring(
+            "CodeSmith Command", "Describe the command to run:"
+        )
+        if not task:
+            return
+        try:
+            answer = query_ai(
+                f"Return only the shell command to accomplish: {task}", "coding"
+            )
+        except RuntimeError as exc:
+            messagebox.showerror(AGENT_NAME, str(exc))
+            return
+        cmd = answer.strip()
+        if cmd.startswith("```"):
+            cmd = cmd.strip("` \n")
+            lines = cmd.splitlines()
+            if lines and (lines[0].startswith("bash") or lines[0].startswith("sh")):
+                lines = lines[1:]
+            cmd = "\n".join(lines).strip()
+        if not messagebox.askyesno(AGENT_NAME, f"Run this command?\n\n{cmd}"):
+            return
+        try:
+            completed = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True
+            )
+            output = completed.stdout + completed.stderr
+        except Exception as exc:
+            output = str(exc)
+        messagebox.showinfo("Command Output", output or "(no output)")
 
     def _fetch_code_suggestions(self, prefix: str):
         """Query the CodeSmith agent for code completion suggestions."""
