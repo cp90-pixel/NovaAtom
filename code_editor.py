@@ -2,11 +2,13 @@ import os
 import sys
 import re
 import keyword
+import json
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 from tkinter.scrolledtext import ScrolledText
 import subprocess
 import threading
+import requests
 
 class CodeEditor:
     def __init__(self, root: tk.Tk):
@@ -158,18 +160,66 @@ class CodeEditor:
         prefix = self.text.get(start, index)
         return prefix
 
+    def _fetch_code_suggestions(self, prefix: str):
+        """Query the CodeSmith agent for code completion suggestions."""
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            return []
+        # Limit context to keep requests small
+        context = self.text.get("1.0", tk.INSERT)[-400:]
+        payload = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are CodeSmith, an AI coding assistant providing code completions.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Code context:\n{context}\n\n"
+                        f"Provide up to 5 code completion suggestions that continue the prefix '{prefix}'.\n"
+                        "Return each suggestion on its own line without additional text."
+                    ),
+                },
+            ],
+            "max_tokens": 64,
+        }
+        try:
+            resp = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                data=json.dumps(payload),
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return []
+            data = resp.json()
+            text = data["choices"][0]["message"]["content"]
+            suggestions = [line.strip() for line in text.splitlines() if line.strip()]
+            return suggestions
+        except Exception:
+            return []
+
     def show_autocomplete(self):
         prefix = self._get_current_prefix()
-        suggestions = set(keyword.kwlist)
-        document_words = re.findall(r"\b\w+\b", self.text.get("1.0", tk.END))
-        suggestions.update(document_words)
-        matches = sorted({s for s in suggestions if s.startswith(prefix) and s != prefix})
-        if not matches:
+        if not prefix.strip():
             return
-        if len(matches) == 1:
-            self.text.insert(tk.INSERT, matches[0][len(prefix):])
+        suggestions = [s for s in self._fetch_code_suggestions(prefix) if s.startswith(prefix)]
+        if not suggestions:
+            local_suggestions = set(keyword.kwlist)
+            document_words = re.findall(r"\b\w+\b", self.text.get("1.0", tk.END))
+            local_suggestions.update(document_words)
+            suggestions = sorted({s for s in local_suggestions if s.startswith(prefix) and s != prefix})
+        if not suggestions:
             return
-        self._open_autocomplete_window(matches, prefix)
+        if len(suggestions) == 1:
+            self.text.insert(tk.INSERT, suggestions[0][len(prefix):])
+            return
+        self._open_autocomplete_window(suggestions, prefix)
 
     def _open_autocomplete_window(self, matches, prefix):
         if hasattr(self, "autocomplete_window") and self.autocomplete_window.winfo_exists():
