@@ -1,0 +1,18 @@
+name: Assign Issue
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  assign:
+    permissions:
+      issues: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign or unassign user
+        uses: takanome-dev/assign-issue-action@beta
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          maintainers: ''  # or comma-separated usernames to allow `/assign @user`
