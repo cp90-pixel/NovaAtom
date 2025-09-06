@@ -8,11 +8,20 @@ from typing import List
 import requests
 
 
+AGENT_NAME = "CodeSmith"
+
+
 def _build_payload(prompt: str) -> dict:
     """Create payload for OpenAI Chat Completions API."""
     return {
         "model": "gpt-4o-mini",
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [
+            {
+                "role": "system",
+                "content": f"You are {AGENT_NAME}, an AI coding assistant.",
+            },
+            {"role": "user", "content": prompt},
+        ],
     }
 
 
@@ -47,7 +56,7 @@ def main(args: List[str]) -> int:
     except RuntimeError as exc:
         print(exc)
         return 1
-    print(answer)
+    print(f"{AGENT_NAME}: {answer}")
     return 0
 
 
