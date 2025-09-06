@@ -2,23 +2,24 @@ import os
 import sys
 import re
 import keyword
-import json
 import importlib
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 from tkinter.scrolledtext import ScrolledText
 import subprocess
 import threading
-import requests
 
 from ai_cli import (
     AGENT_NAME,
-    _build_edit_payload,
+    _build_edit_messages,
+    get_router,
+    list_openai_models,
     load_api_key,
     load_settings,
     query_ai,
     save_settings,
 )
+from semantic_router.schema import Message
 
 class CodeEditor:
     def __init__(self, root: tk.Tk):
@@ -101,12 +102,20 @@ class CodeEditor:
         api_entry.insert(0, self.api_key or "")
         api_entry.grid(row=0, column=1, padx=5, pady=5)
 
+        models = list_openai_models(self.api_key) if self.api_key else ["gpt-4o-mini"]
+        tk.Label(dialog, text="OpenAI Model:").grid(
+            row=1, column=0, sticky="w", padx=5, pady=5
+        )
+        model_var = tk.StringVar(value=self.settings.get("model", models[0]))
+        model_menu = tk.OptionMenu(dialog, model_var, *models)
+        model_menu.grid(row=1, column=1, padx=5, pady=5)
+
         allow_cb = tk.Checkbutton(
             dialog,
             text="Allow terminal commands",
             variable=self.allow_codesmith_terminal,
         )
-        allow_cb.grid(row=1, column=0, columnspan=2, sticky="w", padx=5, pady=5)
+        allow_cb.grid(row=2, column=0, columnspan=2, sticky="w", padx=5, pady=5)
 
         def save():
             key = api_entry.get().strip()
@@ -117,6 +126,7 @@ class CodeEditor:
             settings = {
                 "api_key": self.api_key,
                 "allow_terminal": self.allow_codesmith_terminal.get(),
+                "model": model_var.get(),
             }
             try:
                 save_settings(settings)
@@ -128,9 +138,9 @@ class CodeEditor:
                 return
             dialog.destroy()
 
-        tk.Button(dialog, text="Save", command=save).grid(row=2, column=0, pady=5)
+        tk.Button(dialog, text="Save", command=save).grid(row=3, column=0, pady=5)
         tk.Button(dialog, text="Cancel", command=dialog.destroy).grid(
-            row=2, column=1, pady=5
+            row=3, column=1, pady=5
         )
 
         dialog.grab_set()
@@ -275,7 +285,7 @@ class CodeEditor:
         if not prompt:
             return
         try:
-            answer = query_ai(prompt, "coding")
+            answer = query_ai(prompt, "coding", self.settings.get("model"))
         except RuntimeError as exc:
             messagebox.showerror(AGENT_NAME, str(exc))
             return
@@ -289,26 +299,19 @@ class CodeEditor:
             return
         try:
             api_key = load_api_key()
+            router = get_router(api_key)
         except RuntimeError as exc:
             messagebox.showerror(AGENT_NAME, str(exc))
             return
         content = self.text.get("1.0", tk.END)
-        payload = _build_edit_payload(content, instructions)
+        model = self.settings.get("model") or list_openai_models(api_key)[0]
+        messages = _build_edit_messages(content, instructions, model)
         try:
-            resp = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                data=json.dumps(payload),
-                timeout=30,
-            )
-            if resp.status_code != 200:
-                messagebox.showerror(AGENT_NAME, resp.text)
-                return
-            data = resp.json()
-            new_content = data["choices"][0]["message"]["content"]
+            route = router.check_for_matching_routes(model)
+            llm = route.llm if route and route.llm else router.llm
+            if llm is None:
+                raise RuntimeError("No LLM configured for Semantic Router.")
+            new_content = llm(messages)
             self.text.delete("1.0", tk.END)
             self.text.insert("1.0", new_content)
         except Exception as exc:
@@ -328,7 +331,9 @@ class CodeEditor:
             return
         try:
             answer = query_ai(
-                f"Return only the shell command to accomplish: {task}", "coding"
+                f"Return only the shell command to accomplish: {task}",
+                "coding",
+                self.settings.get("model"),
             )
         except RuntimeError as exc:
             messagebox.showerror(AGENT_NAME, str(exc))
@@ -355,42 +360,31 @@ class CodeEditor:
         """Query the CodeSmith agent for code completion suggestions."""
         try:
             api_key = load_api_key()
+            router = get_router(api_key)
+            model = self.settings.get("model") or list_openai_models(api_key)[0]
         except RuntimeError:
             return []
-        # Limit context to keep requests small
         context = self.text.get("1.0", tk.INSERT)[-400:]
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are CodeSmith, an AI coding assistant providing code completions.",
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Code context:\n{context}\n\n"
-                        f"Provide up to 5 code completion suggestions that continue the prefix '{prefix}'.\n"
-                        "Return each suggestion on its own line without additional text."
-                    ),
-                },
-            ],
-            "max_tokens": 64,
-        }
+        messages = [
+            Message(
+                role="system",
+                content="You are CodeSmith, an AI coding assistant providing code completions.",
+            ),
+            Message(
+                role="user",
+                content=(
+                    f"Code context:\n{context}\n\n"
+                    f"Provide up to 5 code completion suggestions that continue the prefix '{prefix}'.\n"
+                    "Return each suggestion on its own line without additional text."
+                ),
+            ),
+        ]
         try:
-            resp = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                data=json.dumps(payload),
-                timeout=10,
-            )
-            if resp.status_code != 200:
+            route = router.check_for_matching_routes(model)
+            llm = route.llm if route and route.llm else router.llm
+            if llm is None:
                 return []
-            data = resp.json()
-            text = data["choices"][0]["message"]["content"]
+            text = llm(messages)
             suggestions = [line.strip() for line in text.splitlines() if line.strip()]
             return suggestions
         except Exception:

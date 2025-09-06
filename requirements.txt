@@ -1,2 +1,4 @@
 requests>=2.0.0
 flask>=2.0.0
+semantic-router>=0.1.11
+openai>=1.0.0

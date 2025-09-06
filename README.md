@@ -31,6 +31,7 @@ offers basic editing features but does **not** include CodeSmith.
 - Jump to function or class definitions (`F12`).
 - CodeSmith-powered code autocomplete (`Ctrl+Space`). Configure your OpenAI API key via **CodeSmith > Settings**. *(Desktop only)*
 - Ask questions or apply edits with CodeSmith directly from the editor via the **CodeSmith** menu, which also provides access to settings for the API key. *(Desktop only)*
+- CodeSmith uses the vLLM Semantic Router to route requests across all available OpenAI models, letting you choose which model to use.
 - When enabled in **CodeSmith > Settings**, CodeSmith can craft and run terminal commands on your behalf.
 - Basic web-based editor accessible at `http://localhost:5000` when running `web_editor.py`.
 - Load custom extensions from the `extensions/` directory to add new commands.
@@ -58,6 +59,8 @@ By default the CLI runs in **coding** mode for general programming help. Use the
 ```
 python ai_cli.py --mode qa "What does ai_cli.py do?"
 ```
+
+Specify a particular OpenAI model with `--model`, for example `--model gpt-4o`.
 
 The response from CodeSmith will be printed to the terminal. The script uses the
 `requests` library and the OpenAI Chat Completions API. For both modes the CLI
